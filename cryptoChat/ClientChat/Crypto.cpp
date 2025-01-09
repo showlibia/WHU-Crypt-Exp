@@ -18,6 +18,8 @@
 #define SHA256_O0(x) (SHA256_ROTL(x, 25) ^ SHA256_ROTL(x, 14) ^ SHA256_SR(x, 3))
 #define SHA256_O1(x) (SHA256_ROTL(x, 15) ^ SHA256_ROTL(x, 13) ^ SHA256_SR(x, 10))
 
+const std::string CryptoManager::SERVER_KEY_FILE = "server_key.dat";
+
 std::vector<uint8_t> CryptoManager::getRandomBytes(size_t count)
 {
     std::ifstream urandom("/dev/urandom", std::ios::binary);
@@ -520,4 +522,36 @@ bool SHA256::test()
         pass = false;
     }
     return pass;
+}
+
+bool CryptoManager::saveServerKey(const mpz_class &e, const mpz_class &n)
+{
+    std::ofstream file(SERVER_KEY_FILE, std::ios::binary);
+    if (!file)
+        return false;
+
+    std::string e_str = mpz_classToHex(e);
+    std::string n_str = mpz_classToHex(n);
+    file << e_str << "\n"
+         << n_str;
+    return true;
+}
+
+bool CryptoManager::verifyServerKey(const mpz_class &e, const mpz_class &n)
+{
+    std::ifstream file(SERVER_KEY_FILE);
+    if (!file)
+        return false;
+
+    std::string stored_e, stored_n;
+    std::getline(file, stored_e);
+    std::getline(file, stored_n);
+
+    return (e == hexTompz_class(stored_e) && n == hexTompz_class(stored_n));
+}
+
+bool CryptoManager::hasStoredServerKey()
+{
+    std::ifstream file(SERVER_KEY_FILE);
+    return file.good();
 }

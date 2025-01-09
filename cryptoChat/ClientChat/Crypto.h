@@ -79,6 +79,10 @@ public:
     std::string decryptAES(const std::string &cipherText,
                            const std::vector<uint8_t> &key);
 
+    bool saveServerKey(const mpz_class& e, const mpz_class& n);
+    bool verifyServerKey(const mpz_class& e, const mpz_class& n);
+    bool hasStoredServerKey();
+
 private:
     gmp_randclass rng_;
     RSAKeys myRSAKeys, peerRSAKeys;
@@ -95,6 +99,7 @@ private:
     bool generatePrime(mpz_class &result, size_t bits);
     mpz_class getRandomBits(size_t bits);
     std::vector<uint8_t> getRandomBytes(size_t count);
+    static const std::string SERVER_KEY_FILE;
 };
 
 #endif // CRYPTO_H

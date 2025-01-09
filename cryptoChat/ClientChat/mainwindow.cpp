@@ -99,6 +99,36 @@ void MainWindow::handleKeyExchange(const std::string &data)
             }
             mpz_class server_e = crypto->hexTompz_class(parts[1]);
             mpz_class server_n = crypto->hexTompz_class(parts[2]);
+            if (!crypto->hasStoredServerKey())
+            {
+                QMessageBox::StandardButton reply;
+                QString msg = QString("Server's public key fingerprint:\nE: %1\nN: %2\n\nDo you trust this server?")
+                                  .arg(QString::fromStdString(parts[1]))
+                                  .arg(QString::fromStdString(parts[2]));
+                reply = QMessageBox::question(this, "Trust Server?", msg,
+                                              QMessageBox::Yes | QMessageBox::No);
+                if (reply == QMessageBox::No)
+                {
+                    DisconnectFromServer();
+                    return;
+                }
+                if (!crypto->saveServerKey(server_e, server_n))
+                {
+                    QMessageBox::critical(this, "Error", "Failed to save server key");
+                    DisconnectFromServer();
+                    return;
+                }
+            }
+            else
+            {
+                if (!crypto->verifyServerKey(server_e, server_n))
+                {
+                    QMessageBox::critical(this, "Error",
+                                          "Server key mismatch! Potential security risk!");
+                    DisconnectFromServer();
+                    return;
+                }
+            }
             crypto->setPeerRSAKey(server_e, server_n);
             mpz_class server_dh_public = crypto->hexTompz_class(parts[3]);
             mpz_class server_signature = crypto->hexTompz_class(parts[4]);
