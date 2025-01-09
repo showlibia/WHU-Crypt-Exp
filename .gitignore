@@ -5,3 +5,5 @@
 build/
 *.user
 .idea
+cmake/
+cmake-build-debug/
