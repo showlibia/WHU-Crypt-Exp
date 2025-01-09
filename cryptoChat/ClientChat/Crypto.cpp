@@ -5,6 +5,7 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include "AES.h"
 
 std::vector<uint8_t> CryptoManager::getRandomBytes(size_t count)
 {
@@ -304,4 +305,38 @@ bool CryptoManager::generatePrime(mpz_class &result, size_t bits)
 mpz_class CryptoManager::getDHPublicValue() const
 {
     return dhParams.publicValue;
+}
+
+std::string CryptoManager::encryptAES(const std::string &plainText,
+                                      const mpz_class &key) {
+  std::vector<uint8_t> aes_key = mpz_classToBinary(key, 16);
+  std::vector<uint8_t> plain_bytes(plainText.begin(), plainText.end());
+
+  std::vector<uint8_t> encrypted_bytes = AESNI::encrypt(plain_bytes, aes_key);
+
+  return std::string(encrypted_bytes.begin(), encrypted_bytes.end());
+}
+
+std::string CryptoManager::decryptAES(const std::string &cipherText,
+                                      const mpz_class &key) {
+  std::vector<uint8_t> aes_key = mpz_classToBinary(key, 16);
+  std::vector<uint8_t> cipher_bytes(cipherText.begin(), cipherText.end());
+
+  // 使用 AES-NI 解密
+  std::vector<uint8_t> decrypted_bytes = AESNI::decrypt(cipher_bytes, aes_key);
+
+  return std::string(decrypted_bytes.begin(), decrypted_bytes.end());
+}
+
+std::vector<uint8_t> CryptoManager::mpz_classToBinary(const mpz_class &number,
+                                                      size_t length) {
+  std::string hex = mpz_classToHex(number);
+  std::vector<uint8_t> binary(length, 0);
+
+  size_t hex_size = hex.size();
+  for (size_t i = 0; i < length && i * 2 < hex_size; ++i) {
+    binary[i] = std::stoi(hex.substr(hex_size - 2 * (i + 1), 2), nullptr, 16);
+  }
+
+  return binary;
 }

@@ -94,12 +94,14 @@ void MainWindow::SendMessageToServer()
     try
     {
         std::string message = "[" + username.toStdString() + "]: " + message_q.toStdString();
-        if (clnt_sock->write(message.c_str(), message.length()) == -1)
+        std::string encrypted_message = crypto->encryptAES(message, sessionKey);
+        if (clnt_sock->write(encrypted_message.c_str(), encrypted_message.length()) == -1)
         {
             QMessageBox::critical(this, "Error", "Failed to send message");
             return;
         }
         std::cout << "Sent: " << message << std::endl;
+        std::cout << "Encrypt message length: " << encrypted_message.length() << std::endl;
         ui->send_edit->clear();
     }
     catch (const std::exception &e)
@@ -134,8 +136,10 @@ void MainWindow::ReceiveMessageFromServer()
             ui->tip_edit->setText("Connected securely");
             return;
         }
+        std::string decrypted_message = crypto->decryptAES(received, sessionKey);
         std::cout << "Received: " << std::string(received_data.begin(), received_data.end()) << std::endl;
-        QString msg = QString::fromStdString(received);
+        std::cout << "Received (decrypted): " << decrypted_message << std::endl;
+        QString msg = QString::fromStdString(decrypted_message);
         int end = msg.indexOf(']');
         if (end > 0)
         {
@@ -158,10 +162,8 @@ void MainWindow::ReceiveMessageFromServer()
 void MainWindow::handleKeyExchange(const std::string &data)
 {
     std::string key_exchange = "KEY_EXCHANGE|";
-    qDebug() << "before compare" ;
     if (data.compare(0, key_exchange.length(), key_exchange) == 0)
     {
-        qDebug() << "into if compare";
         try
         {
             std::vector<std::string> parts;
