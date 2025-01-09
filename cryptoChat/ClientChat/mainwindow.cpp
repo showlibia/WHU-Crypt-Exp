@@ -158,8 +158,10 @@ void MainWindow::ReceiveMessageFromServer()
 void MainWindow::handleKeyExchange(const std::string &data)
 {
     std::string key_exchange = "KEY_EXCHANGE|";
+    qDebug() << "before compare" ;
     if (data.compare(0, key_exchange.length(), key_exchange) == 0)
     {
+        qDebug() << "into if compare";
         try
         {
             std::vector<std::string> parts;

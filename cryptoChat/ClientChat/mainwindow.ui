@@ -20,7 +20,7 @@
       <item>
        <widget class="QLabel" name="tip_label">
         <property name="text">
-         <string>系统提示信息</string>
+         <string>System prompt Info</string>
         </property>
        </widget>
       </item>
@@ -39,14 +39,14 @@
         <item>
          <widget class="QPushButton" name="cancel_pb">
           <property name="text">
-           <string>取消</string>
+           <string>Cancel</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="send_pb">
           <property name="text">
-           <string>发送</string>
+           <string>Send</string>
           </property>
          </widget>
         </item>
@@ -57,14 +57,14 @@
         <item>
          <widget class="QPushButton" name="disconnect_pb">
           <property name="text">
-           <string>断开</string>
+           <string>Disconnect</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="connect_pb">
           <property name="text">
-           <string>连接</string>
+           <string>Connect</string>
           </property>
          </widget>
         </item>
@@ -78,21 +78,21 @@
         <item row="0" column="1">
          <widget class="QLineEdit" name="username_edit">
           <property name="text">
-           <string>asdas</string>
+           <string>Andy</string>
           </property>
          </widget>
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="host_label">
           <property name="text">
-           <string>主机地址</string>
+           <string>HostAddress</string>
           </property>
          </widget>
         </item>
         <item row="0" column="0">
          <widget class="QLabel" name="username_label">
           <property name="text">
-           <string>用户名</string>
+           <string>Username</string>
           </property>
          </widget>
         </item>
@@ -106,14 +106,14 @@
         <item row="2" column="0">
          <widget class="QLabel" name="port_label">
           <property name="text">
-           <string>端口号</string>
+           <string>Port</string>
           </property>
          </widget>
         </item>
         <item row="2" column="1">
          <widget class="QLineEdit" name="port_edit">
           <property name="text">
-           <string/>
+           <string>8080</string>
           </property>
          </widget>
         </item>
@@ -129,7 +129,7 @@
      <x>0</x>
      <y>0</y>
      <width>834</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
   </widget>
