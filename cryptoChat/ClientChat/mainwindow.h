@@ -33,8 +33,10 @@ private:
     Ui::MainWindow *ui;
     QTcpSocket *clnt_sock;
     CryptoManager *crypto;
+    SHA256 *sha256;
     mpz_class sessionKey;
     QString username;
+    std::vector<uint8_t> aesKey;
 };
 
 #endif // MAINWINDOW_H

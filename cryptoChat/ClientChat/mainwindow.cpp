@@ -13,6 +13,7 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("ChatRoom");
     clnt_sock = new QTcpSocket(this);
     crypto = new CryptoManager();
+    sha256 = new SHA256();
     if (!crypto->generateRSAKeys(2048))
     {
         QMessageBox::critical(this, "error", "RSA error");
@@ -74,91 +75,6 @@ void MainWindow::DisconnectFromServer()
     ui->tip_edit->setText("disconnected");
 }
 
-void MainWindow::SendMessageToServer()
-{
-    if (!clnt_sock || clnt_sock->state() != QTcpSocket::ConnectedState)
-    {
-        QMessageBox::warning(this, "Warning", "Not connected to server");
-        return;
-    }
-    if (sessionKey == 0)
-    {
-        QMessageBox::warning(this, "Warning", "Not connected securely");
-        return;
-    }
-    QString message_q = ui->send_edit->toPlainText();
-    if (message_q.isEmpty())
-    {
-        return;
-    }
-    try
-    {
-        std::string message = "[" + username.toStdString() + "]: " + message_q.toStdString();
-        std::string encrypted_message = crypto->encryptAES(message, sessionKey);
-        if (clnt_sock->write(encrypted_message.c_str(), encrypted_message.length()) == -1)
-        {
-            QMessageBox::critical(this, "Error", "Failed to send message");
-            return;
-        }
-        std::cout << "Sent: " << message << std::endl;
-        std::cout << "Encrypt message length: " << encrypted_message.length() << std::endl;
-        ui->send_edit->clear();
-    }
-    catch (const std::exception &e)
-    {
-        QMessageBox::critical(this, "Error", "Failed to process message: " + QString(e.what()));
-    }
-}
-
-void MainWindow::ReceiveMessageFromServer()
-{
-    QByteArray data = clnt_sock->readAll();
-    std::vector<uint8_t> received_data(data.begin(), data.end());
-    std::string received(received_data.begin(), received_data.end());
-    if (sessionKey == 0)
-    {
-        std::cout << "Received: " << received << std::endl;
-        std::string key_exchange = "KEY_EXCHANGE|";
-        if (received.compare(0, key_exchange.length(), key_exchange) == 0)
-        {
-            handleKeyExchange(received);
-            return;
-        }
-        else
-        {
-            return;
-        }
-    }
-    if (sessionKey != 0)
-    {
-        if (received == "KEY_EXCHANGE_COMPLETE")
-        {
-            ui->tip_edit->setText("Connected securely");
-            return;
-        }
-        std::string decrypted_message = crypto->decryptAES(received, sessionKey);
-        std::cout << "Received: " << std::string(received_data.begin(), received_data.end()) << std::endl;
-        std::cout << "Received (decrypted): " << decrypted_message << std::endl;
-        QString msg = QString::fromStdString(decrypted_message);
-        int end = msg.indexOf(']');
-        if (end > 0)
-        {
-            QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
-            QString msg_head = msg.mid(0, end + 1) + " " + timestamp + "\n";
-            QString msg_content = msg.mid(end + 1);
-            if (msg.mid(1, end - 1).contains(username))
-            {
-                msg_head = QString("<b><span style='color:lightgreen;'>%1</span></b>").arg(msg_head);
-            }
-            else
-            {
-                msg_head = QString("<b><span style='color:lightblue;'>%1</span></b>").arg(msg_head);
-            }
-            ui->recieve_edit->append(msg_head + msg_content);
-        }
-    }
-}
-
 void MainWindow::handleKeyExchange(const std::string &data)
 {
     std::string key_exchange = "KEY_EXCHANGE|";
@@ -200,6 +116,12 @@ void MainWindow::handleKeyExchange(const std::string &data)
             }
             mpz_class shared_secret = crypto->computeSharedSecret(server_dh_public);
             sessionKey = shared_secret;
+            size_t count = (mpz_sizeinbase(shared_secret.get_mpz_t(), 2) + 7) / 8;
+            std::vector<unsigned char> secret_bytes(count);
+            size_t written1;
+            mpz_export(secret_bytes.data(), &written1, 1, 1, 1, 0, shared_secret.get_mpz_t());
+            std::vector<uint8_t> full = sha256->hash(secret_bytes.data(), secret_bytes.size());
+            aesKey = std::vector<uint8_t>(full.begin(), full.begin() + 16);
             std::cout << "key: " << sessionKey << std::endl;
             std::string client_dh_hex = crypto->mpz_classToHex(crypto->getDHPublicValue());
             mpz_class client_signature = crypto->signData(crypto->getDHPublicValue());
@@ -229,6 +151,89 @@ void MainWindow::handleKeyExchange(const std::string &data)
             QMessageBox::critical(this, "Error", "Failed to exchange keys: " + QString(e.what()));
             DisconnectFromServer();
             return;
+        }
+    }
+}
+
+void MainWindow::SendMessageToServer()
+{
+    if (!clnt_sock || clnt_sock->state() != QTcpSocket::ConnectedState)
+    {
+        QMessageBox::warning(this, "Warning", "Not connected to server");
+        return;
+    }
+    if (sessionKey == 0)
+    {
+        QMessageBox::warning(this, "Warning", "Not connected securely");
+        return;
+    }
+    QString message_q = ui->send_edit->toPlainText();
+    if (message_q.isEmpty())
+    {
+        return;
+    }
+    try
+    {
+        std::string message = "[" + username.toStdString() + "]: " + message_q.toStdString();
+        std::string encrypted = crypto->encryptAES(message, aesKey);
+        if (clnt_sock->write(encrypted.c_str(), encrypted.length()) == -1)
+        {
+            QMessageBox::critical(this, "Error", "Failed to send message");
+            return;
+        }
+        std::cout << "Sent: " << message << std::endl;
+        ui->send_edit->clear();
+    }
+    catch (const std::exception &e)
+    {
+        QMessageBox::critical(this, "Error", "Failed to process message: " + QString(e.what()));
+    }
+}
+
+void MainWindow::ReceiveMessageFromServer()
+{
+    QByteArray data = clnt_sock->readAll();
+    std::vector<uint8_t> received_data(data.begin(), data.end());
+    std::string received(received_data.begin(), received_data.end());
+    if (sessionKey == 0)
+    {
+        std::cout << "Received: " << received << std::endl;
+        std::string key_exchange = "KEY_EXCHANGE|";
+        if (received.compare(0, key_exchange.length(), key_exchange) == 0)
+        {
+            handleKeyExchange(received);
+            return;
+        }
+        else
+        {
+            return;
+        }
+    }
+    if (sessionKey != 0)
+    {
+        if (received == "KEY_EXCHANGE_COMPLETE")
+        {
+            ui->tip_edit->setText("Connected securely");
+            return;
+        }
+        std::string decrypted = crypto->decryptAES(received, aesKey);
+        std::cout << "Received: " << std::string(received_data.begin(), received_data.end()) << std::endl;
+        QString msg = QString::fromStdString(decrypted);
+        int end = msg.indexOf(']');
+        if (end > 0)
+        {
+            QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
+            QString msg_head = msg.mid(0, end + 1) + " " + timestamp + "\n";
+            QString msg_content = msg.mid(end + 1);
+            if (msg.mid(1, end - 1).contains(username))
+            {
+                msg_head = QString("<b><span style='color:lightgreen;'>%1</span></b>").arg(msg_head);
+            }
+            else
+            {
+                msg_head = QString("<b><span style='color:lightblue;'>%1</span></b>").arg(msg_head);
+            }
+            ui->recieve_edit->append(msg_head + msg_content);
         }
     }
 }

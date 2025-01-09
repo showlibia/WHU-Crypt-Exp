@@ -16,7 +16,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 find_package(GMP REQUIRED)
 include_directories(${GMP_INCLUDE_DIRS})
 # 将源代码添加到此项目的可执行文件。
-add_executable(ServerChat "ServerChat.cpp" "ServerChat.h" "main.cpp" "Crypto.cpp" "Crypto.h")
+add_executable(ServerChat "ServerChat.cpp" "ServerChat.h" 
+"AES.cpp" "AES.h" "main.cpp" "Crypto.cpp" "Crypto.h")
 
 if (WIN32)
     target_link_libraries(ServerChat ws2_32)
@@ -27,6 +28,11 @@ target_link_libraries(${PROJECT_NAME}
     GMP::GMP
     GMP::GMPXX
 )
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(ServerChat PRIVATE -maes)
+endif()
+
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ServerChat PROPERTY CXX_STANDARD 20)

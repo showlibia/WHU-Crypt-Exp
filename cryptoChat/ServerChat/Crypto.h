@@ -8,7 +8,37 @@
 #include <string>
 #include <cstdint>
 
-class CryptoManager {
+class SHA256
+{
+private:
+    struct Context
+    {
+        uint32_t state[8];
+        uint64_t count;
+        unsigned char buffer[64];
+    };
+
+    static const uint32_t K[64];
+    Context ctx;
+
+    void init();
+    void transform(const unsigned char *data);
+
+public:
+    static const int DIGEST_SIZE = 32;
+
+    SHA256();
+
+    void update(const unsigned char *data, size_t len);
+    void final(unsigned char *digest);
+    std::string bytesToHex(const std::vector<unsigned char> &bytes);
+    bool test();
+    std::vector<unsigned char> hash(const unsigned char* input, size_t length);
+
+};
+
+class CryptoManager
+{
 public:
     CryptoManager();
     ~CryptoManager();
@@ -43,6 +73,11 @@ public:
     bool generateDHKeys();
     mpz_class computeSharedSecret(const mpz_class &peerPublic);
     mpz_class getDHPublicValue() const;
+
+    std::string encryptAES(const std::string &plainText,
+                           const std::vector<uint8_t> &key);
+    std::string decryptAES(const std::string &cipherText,
+                           const std::vector<uint8_t> &key);
 
 private:
     gmp_randclass rng_;

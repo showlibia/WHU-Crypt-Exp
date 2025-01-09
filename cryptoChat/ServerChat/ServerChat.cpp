@@ -8,6 +8,13 @@ const socket_t INVALID_SOCKET_FD = -1;
 void server_epoll()
 {
     CryptoManager crypto;
+    SHA256 sha256;
+    if (!sha256.test())
+    {
+        std::cerr << "SHA256 implementation verification failed!" << std::endl;
+        return;
+    }
+    std::cout << "SHA256 implementation verified successfully." << std::endl;
     if (!crypto.generateRSAKeys(2048))
     {
         std::cerr << "RSA error" << std::endl;
@@ -17,6 +24,7 @@ void server_epoll()
     std::vector<socket_t> clnt_sockets;
     std::map<socket_t, mpz_class> sessionKeys;
     std::map<socket_t, CryptoManager::RSAKeys> peerRSAKeys;
+    std::map<socket_t, std::vector<uint8_t>> aesKeys;
     socket_t serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == INVALID_SOCKET_FD)
     {
@@ -148,6 +156,12 @@ void server_epoll()
                                 }
                                 mpz_class shared_secret = crypto.computeSharedSecret(client_dh_public);
                                 sessionKeys[i] = shared_secret;
+                                size_t count = (mpz_sizeinbase(shared_secret.get_mpz_t(), 2) + 7) / 8;
+                                std::vector<unsigned char> secret_bytes(count);
+                                size_t written;
+                                mpz_export(secret_bytes.data(), &written, 1, 1, 1, 0, shared_secret.get_mpz_t());
+                                std::vector<uint8_t> full = sha256.hash(secret_bytes.data(), secret_bytes.size());
+                                aesKeys[i] = std::vector<uint8_t>(full.begin(), full.begin() + 16);
                                 for (socket_t fd : clnt_sockets)
                                 {
                                     std::cout << "Session key for " << fd << ": " << sessionKeys[fd] << std::endl;
@@ -173,12 +187,16 @@ void server_epoll()
                     {
                         try
                         {
+                            std::string decrypted_str = crypto.decryptAES(received, aesKeys[i]);
                             for (socket_t fd : clnt_sockets)
                             {
-                                if (sessionKeys.find(fd) != sessionKeys.end())
+                                if (fd != serv_sock)
                                 {
-                                    std::string encrypted_str(received.begin(), received.end());
-                                    send(fd, encrypted_str.c_str(), encrypted_str.length(), 0);
+                                    if (sessionKeys.find(fd) != sessionKeys.end())
+                                    {
+                                        std::string encrypted_str = crypto.encryptAES(decrypted_str, aesKeys[fd]);
+                                        send(fd, encrypted_str.c_str(), encrypted_str.length(), 0);
+                                    }
                                 }
                             }
                         }
@@ -192,6 +210,7 @@ void server_epoll()
                                 clnt_sockets.end());
                             sessionKeys.erase(i);
                             peerRSAKeys.erase(i);
+                            aesKeys.erase(i);
                             continue;
                         }
                     }

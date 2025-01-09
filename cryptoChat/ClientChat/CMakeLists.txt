@@ -23,8 +23,8 @@ set(PROJECT_SOURCES
     mainwindow.ui
     Crypto.cpp
     Crypto.h
-        AES.h
-        AES.cpp
+    AES.cpp
+    AES.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -57,21 +57,15 @@ target_link_libraries(ClientChat PRIVATE
     GMP::GMPXX
 )
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(STATUS "Using Clang: Enabling AES-NI and SSE4.1")
-    target_compile_options(ClientChat PRIVATE -maes -msse4.1)
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    message(STATUS "Using GCC: Enabling AES-NI and SSE4.1")
-    target_compile_options(ClientChat PRIVATE -maes -msse4.1)
-else()
-    message(WARNING "Unsupported compiler. AES-NI may not be available.")
-endif()
-
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
 if(${QT_VERSION} VERSION_LESS 6.1.0)
   set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.ClientChat)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(ClientChat PRIVATE -maes)
 endif()
 
 set_target_properties(ClientChat PROPERTIES
