@@ -6,11 +6,19 @@
 #include <iostream>
 
 // TODO: 在此处引用程序需要的其他标头。
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <vector>
-#include <algorithm>
-#include <cstring>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <errno.h>
 
+#include <vector>
+#include <sstream>
+#include <algorithm>
+#include <map>
+#include <cstring>
+#include <iomanip>
+#include "Crypto.h"
 
 void server_epoll();

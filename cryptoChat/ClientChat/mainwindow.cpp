@@ -1,91 +1,230 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
-#include <QNetworkInterface>
+#include <QMessageBox>
+#include <iostream>
+#include <sstream>
+#include <algorithm>
+#include <iomanip>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+    : QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
     setWindowTitle("ChatRoom");
-
     clnt_sock = new QTcpSocket(this);
-	username = "User";
-
-	connect(ui->connect_pb, &QPushButton::clicked, this, &MainWindow::ConnectToServer);
-    connect(clnt_sock, &QTcpSocket::connected, this, [=]() {
-		ui->tip_edit->setText("Connected to server");
-        });
-	connect(ui->disconnect_pb, &QPushButton::clicked, this, &MainWindow::DisconnectFromServer);
-	connect(ui->send_pb, &QPushButton::clicked, this, &MainWindow::SendMessageToServer);
-	connect(clnt_sock, &QTcpSocket::readyRead, this, &MainWindow::ReceiveMessageFromServer);
+    crypto = new CryptoManager();
+    if (!crypto->generateRSAKeys(2048))
+    {
+        QMessageBox::critical(this, "error", "RSA error");
+        return;
+    }
+    sessionKey = 0;
+    connect(ui->connect_pb, &QPushButton::clicked, this, &MainWindow::ConnectToServer);
+    connect(ui->disconnect_pb, &QPushButton::clicked, this, &MainWindow::DisconnectFromServer);
+    connect(ui->send_pb, &QPushButton::clicked, this, &MainWindow::SendMessageToServer);
+    connect(clnt_sock, &QTcpSocket::readyRead, this, &MainWindow::ReceiveMessageFromServer);
+    connect(clnt_sock, &QTcpSocket::connected, this, [this]()
+            { ui->tip_edit->setText("connected"); });
+    connect(clnt_sock, &QTcpSocket::disconnected, this, [this]()
+            {
+        sessionKey = 0;
+        ui->tip_edit->setText("Disconnected"); });
 }
 
 MainWindow::~MainWindow()
 {
+    delete crypto;
     delete ui;
 }
 
-void MainWindow::ConnectToServer() {
+void MainWindow::ConnectToServer()
+{
     username = ui->username_edit->text();
     QString hostAddress = ui->host_edit->text();
     quint16 port = ui->port_edit->text().toUShort();
-
     qDebug() << "Connecting to host:" << hostAddress << "on port:" << port;
-
-	clnt_sock->connectToHost(hostAddress, port);
-    if (hostAddress.isEmpty() || port == 0) {
+    clnt_sock->connectToHost(hostAddress, port);
+    if (hostAddress.isEmpty() || port == 0)
+    {
         qDebug() << "Invalid host address or port.";
         ui->tip_edit->setText("Please enter a valid IP and port.");
         return;
     }
-
     qDebug() << "Socket state:" << clnt_sock->state();
-    if (!clnt_sock->waitForConnected(5000)) {
+    if (!clnt_sock->waitForConnected(5000))
+    {
         qDebug() << "Connection failed. Error:" << clnt_sock->errorString();
         ui->tip_edit->setText("Failed to connect: " + clnt_sock->errorString());
-    } else {
+    }
+    else
+    {
         qDebug() << "Connection successful. State:" << clnt_sock->state();
-        ui->tip_edit->setText("Connected to server.");
+        ui->tip_edit->setText("connected");
     }
 }
 
-void MainWindow::DisconnectFromServer() {
-	clnt_sock->disconnectFromHost();
-	if (clnt_sock->state() == QTcpSocket::ConnectedState) {
-		clnt_sock->waitForDisconnected();
-	}
-	ui->tip_edit->setText("Disconnected from server");
+void MainWindow::DisconnectFromServer()
+{
+    clnt_sock->disconnectFromHost();
+    if (clnt_sock->state() == QTcpSocket::ConnectedState)
+    {
+        clnt_sock->waitForDisconnected();
+    }
+    sessionKey = 0;
+    ui->tip_edit->setText("disconnected");
 }
 
-void MainWindow::SendMessageToServer() {
-	QString message = ui->send_edit->toPlainText();
-	message = "[" + username + "]: " + message;
-    qDebug() << "Message sent:" << message;
-	clnt_sock->write(message.toUtf8().data());
-    clnt_sock->flush();
-	ui->send_edit->clear();
+void MainWindow::SendMessageToServer()
+{
+    if (!clnt_sock || clnt_sock->state() != QTcpSocket::ConnectedState)
+    {
+        QMessageBox::warning(this, "Warning", "Not connected to server");
+        return;
+    }
+    if (sessionKey == 0)
+    {
+        QMessageBox::warning(this, "Warning", "Not connected securely");
+        return;
+    }
+    QString message_q = ui->send_edit->toPlainText();
+    if (message_q.isEmpty())
+    {
+        return;
+    }
+    try
+    {
+        std::string message = "[" + username.toStdString() + "]: " + message_q.toStdString();
+        if (clnt_sock->write(message.c_str(), message.length()) == -1)
+        {
+            QMessageBox::critical(this, "Error", "Failed to send message");
+            return;
+        }
+        std::cout << "Sent: " << message << std::endl;
+        ui->send_edit->clear();
+    }
+    catch (const std::exception &e)
+    {
+        QMessageBox::critical(this, "Error", "Failed to process message: " + QString(e.what()));
+    }
 }
 
-void MainWindow::ReceiveMessageFromServer() {
-    while (clnt_sock->bytesAvailable()) {
-        QByteArray array = clnt_sock->readAll();
-        QString msg = QString(array);
-
+void MainWindow::ReceiveMessageFromServer()
+{
+    QByteArray data = clnt_sock->readAll();
+    std::vector<uint8_t> received_data(data.begin(), data.end());
+    std::string received(received_data.begin(), received_data.end());
+    if (sessionKey == 0)
+    {
+        std::cout << "Received: " << received << std::endl;
+        std::string key_exchange = "KEY_EXCHANGE|";
+        if (received.compare(0, key_exchange.length(), key_exchange) == 0)
+        {
+            handleKeyExchange(received);
+            return;
+        }
+        else
+        {
+            return;
+        }
+    }
+    if (sessionKey != 0)
+    {
+        if (received == "KEY_EXCHANGE_COMPLETE")
+        {
+            ui->tip_edit->setText("Connected securely");
+            return;
+        }
+        std::cout << "Received: " << std::string(received_data.begin(), received_data.end()) << std::endl;
+        QString msg = QString::fromStdString(received);
         int end = msg.indexOf(']');
-        if (end > 0) {
+        if (end > 0)
+        {
             QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
             QString msg_head = msg.mid(0, end + 1) + " " + timestamp + "\n";
-            QString msg_content = msg.mid(end + 1, -1);
-
-            if (msg.mid(0, end) == username) {
+            QString msg_content = msg.mid(end + 1);
+            if (msg.mid(1, end - 1).contains(username))
+            {
                 msg_head = QString("<b><span style='color:lightgreen;'>%1</span></b>").arg(msg_head);
-            } else {
+            }
+            else
+            {
                 msg_head = QString("<b><span style='color:lightblue;'>%1</span></b>").arg(msg_head);
             }
-
             ui->recieve_edit->append(msg_head + msg_content);
         }
     }
 }
 
+void MainWindow::handleKeyExchange(const std::string &data)
+{
+    std::string key_exchange = "KEY_EXCHANGE|";
+    if (data.compare(0, key_exchange.length(), key_exchange) == 0)
+    {
+        try
+        {
+            std::vector<std::string> parts;
+            std::string received = data;
+            size_t pos = 0;
+            std::string token;
+            while ((pos = received.find('|')) != std::string::npos)
+            {
+                token = received.substr(0, pos);
+                parts.push_back(token);
+                received = received.substr(pos + 1);
+            }
+            parts.push_back(received);
+            if (parts.size() != 5)
+            {
+                throw std::runtime_error("Invalid key exchange format");
+            }
+            mpz_class server_e = crypto->hexTompz_class(parts[1]);
+            mpz_class server_n = crypto->hexTompz_class(parts[2]);
+            crypto->setPeerRSAKey(server_e, server_n);
+            mpz_class server_dh_public = crypto->hexTompz_class(parts[3]);
+            mpz_class server_signature = crypto->hexTompz_class(parts[4]);
+            if (!crypto->verifySignature(server_dh_public, server_signature))
+            {
+                QMessageBox::critical(this, "Error", "Invalid server signature");
+                DisconnectFromServer();
+                return;
+            }
+            if (!crypto->generateDHKeys())
+            {
+                QMessageBox::critical(this, "Error", "Failed to generate DH keys");
+                DisconnectFromServer();
+                return;
+            }
+            mpz_class shared_secret = crypto->computeSharedSecret(server_dh_public);
+            sessionKey = shared_secret;
+            std::cout << "key: " << sessionKey << std::endl;
+            std::string client_dh_hex = crypto->mpz_classToHex(crypto->getDHPublicValue());
+            mpz_class client_signature = crypto->signData(crypto->getDHPublicValue());
+            std::string signature_hex = crypto->mpz_classToHex(client_signature);
+            std::ostringstream oss;
+            oss << "KEY_EXCHANGE|" << crypto->mpz_classToHex(crypto->getRSAPublicKey_e()) << "|"
+                << crypto->mpz_classToHex(crypto->getRSAPublicKey_n()) << "|"
+                << client_dh_hex << "|" << signature_hex;
+            std::string msg = oss.str();
+            QByteArray msg_bytes(msg.c_str(), msg.length());
+            qint64 written = 0;
+            while (written < msg_bytes.size())
+            {
+                qint64 bytes = clnt_sock->write(msg_bytes.mid(written));
+                if (bytes <= 0)
+                {
+                    QMessageBox::critical(this, "Error", "Failed to send key exchange data");
+                    DisconnectFromServer();
+                    return;
+                }
+                written += bytes;
+            }
+            clnt_sock->flush();
+        }
+        catch (const std::exception &e)
+        {
+            QMessageBox::critical(this, "Error", "Failed to exchange keys: " + QString(e.what()));
+            DisconnectFromServer();
+            return;
+        }
+    }
+}
